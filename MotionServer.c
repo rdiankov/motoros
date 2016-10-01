@@ -1766,11 +1766,6 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 				}
 			}	
 #elif (FS100 || DX200)
-            printf("pos=[");
-            for(axis=0; axis<MP_GRP_AXES_NUM; axis++) {
-                printf("%d, ", moveData.grp_pos_info[0].pos[axis]);
-			}
-			printf("\n");
 			ret = mpExRcsIncrementMove(&moveData);
 			if(ret != 0)
 			{
