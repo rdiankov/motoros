@@ -879,6 +879,7 @@ BOOL Ros_MotionServer_StartTrajMode(Controller* controller)
 	MP_STD_RSP_DATA rData;
 	MP_START_JOB_SEND_DATA sStartData;
 	int checkCount;
+    int grpNo;
 
 	printf("In StartTrajMode\r\n");
 
@@ -971,7 +972,14 @@ BOOL Ros_MotionServer_StartTrajMode(Controller* controller)
 			goto updateStatus;			
 		}
 	}
-	
+
+    // have to initialize the prevPulsePos that will be used when interpolating the traj
+    for(grpNo = 0; grpNo < MP_GRP_NUM; ++grpNo) {
+        if( controller->ctrlGroups[grpNo] != NULL && Ros_CtrlGroup_IsRobot(controller->ctrlGroups[grpNo])) {
+            Ros_CtrlGroup_GetPulsePosCmd(controller->ctrlGroups[grpNo], controller->ctrlGroups[grpNo]->prevPulsePos);
+        }
+    }
+
 	// Start Job
 	memset(&rData, 0x00, sizeof(rData));
 	memset(&sStartData, 0x00, sizeof(sStartData));
@@ -1220,7 +1228,7 @@ int Ros_MotionServer_InitTrajPointFull(CtrlGroup* ctrlGroup, SmBodyJointTrajPtFu
 					trajPulsePos[0], trajPulsePos[1], trajPulsePos[2],
 					trajPulsePos[3], trajPulsePos[4], trajPulsePos[5],
 					trajPulsePos[6], trajPulsePos[7]);
-				printf("    cur=%d, %d, %d, %d, %d, %d, %d, %d\r\n",
+				printf("    curcommand=%d, %d, %d, %d, %d, %d, %d, %d\r\n",
 					curCommandedPos[0], curCommandedPos[1], curCommandedPos[2],
 					curCommandedPos[3], curCommandedPos[4], curCommandedPos[5],
 					curCommandedPos[6], curCommandedPos[7]);
@@ -1362,10 +1370,10 @@ void Ros_MotionServer_JointTrajDataToIncQueue(Controller* controller, int groupN
 	int timeInc_ms;						// time increment in millisecond
 	int calculationTime_ms;				// time in ms at which the interpolation takes place
 	float interpolTime;      			// time increment in second
-	long prevPulsePos[MP_GRP_AXES_NUM];
+	//long prevPulsePos[MP_GRP_AXES_NUM];
 	long newPulsePos[MP_GRP_AXES_NUM];
 	Incremental_data incData;
-
+        
 	//printf("Starting JointTrajDataProcess\r\n");	
 
 	// Initialization of pointers and memory
@@ -1376,8 +1384,8 @@ void Ros_MotionServer_JointTrajDataToIncQueue(Controller* controller, int groupN
 	memcpy(startTrajData, curTrajData, sizeof(JointMotionData));
 	
 	// Set pulse position references
-	memset(prevPulsePos, 0x00, sizeof(prevPulsePos));
-	Ros_CtrlGroup_ConvertToMotoPos(ctrlGroup, curTrajData->pos, prevPulsePos);
+	//memset(prevPulsePos, 0x00, sizeof(prevPulsePos));
+	//Ros_CtrlGroup_ConvertToMotoPos(ctrlGroup, curTrajData->pos, controller->prevPulsePos);
 	memset(newPulsePos, 0x00, sizeof(newPulsePos));
 	memset(&incData, 0x00, sizeof(incData));
 	incData.frame = MP_INC_PULSE_DTYPE;
@@ -1454,11 +1462,19 @@ void Ros_MotionServer_JointTrajDataToIncQueue(Controller* controller, int groupN
 		 		ctrlGroup->timeLeftover_ms = calculationTime_ms - endTrajData->time;
 			} 
 		}
-		
-		//printf("%d: %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f\r\n", curTrajData->time,
-		//	curTrajData->pos[0], curTrajData->pos[1], curTrajData->pos[2],
-		//	curTrajData->pos[3], curTrajData->pos[4], curTrajData->pos[5],
-		//	curTrajData->pos[6]);
+
+//        if( (curTrajData->time % 100) == 0 ) {
+//            printf("%d pos=[%.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f]\r\n", curTrajData->time,
+//			curTrajData->pos[0], curTrajData->pos[1], curTrajData->pos[2],
+//			curTrajData->pos[3], curTrajData->pos[4], curTrajData->pos[5],
+//			curTrajData->pos[6]);
+//       		Ros_CtrlGroup_GetPulsePosCmd(ctrlGroup, curCommandedPulse);
+//            Ros_CtrlGroup_ConvertToRosPos(ctrlGroup, curCommandedPulse, curCommandedPos);
+//        	printf("curcommand=[%.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f]\r\n",
+//					curCommandedPos[0], curCommandedPos[1], curCommandedPos[2],
+//					curCommandedPos[3], curCommandedPos[4], curCommandedPos[5],
+//					curCommandedPos[6]);
+//        }
 	
 		// Convert position in motoman pulse joint
 		Ros_CtrlGroup_ConvertToMotoPos(ctrlGroup, curTrajData->pos, newPulsePos);
@@ -1467,20 +1483,25 @@ void Ros_MotionServer_JointTrajDataToIncQueue(Controller* controller, int groupN
 		incData.time = curTrajData->time;
 		for (i = 0; i < ctrlGroup->numAxes; i++)
 		{
-			incData.inc[i] = (newPulsePos[i]- prevPulsePos[i]);
+			incData.inc[i] = (newPulsePos[i]- ctrlGroup->prevPulsePos[i]);
 		}
 		
 		// Add the increment to the queue
-		if(!Ros_MotionServer_AddPulseIncPointToQ(controller, groupNo, &incData))
+		if(!Ros_MotionServer_AddPulseIncPointToQ(controller, groupNo, &incData)) {
+//            printf("missed %d: %d, %d, %d, %d, %d, %d, %d\r\n", incData.time,
+//			incData.inc[0], incData.inc[1], incData.inc[2],
+//			incData.inc[3], incData.inc[4], incData.inc[5],
+//			incData.inc[6]);
 			break;
-		
-		//printf("%d: %d, %d, %d, %d, %d, %d, %d\r\n", incData.time,
-		//	incData.inc[0], incData.inc[1], incData.inc[2],
-		//	incData.inc[3], incData.inc[4], incData.inc[5],
-		//	incData.inc[6]);
-			
+        }
+
+//        printf("missed %d: %d, %d, %d, %d, %d, %d, %d\r\n", incData.time,
+//			incData.inc[0], incData.inc[1], incData.inc[2],
+//			incData.inc[3], incData.inc[4], incData.inc[5],
+//			incData.inc[6]);
+
 		// Copy data to the previous pulse position for next iteration
-		memcpy(prevPulsePos, newPulsePos, sizeof(prevPulsePos));
+		memcpy(ctrlGroup->prevPulsePos, newPulsePos, sizeof(ctrlGroup->prevPulsePos));
 	}
 }
 
@@ -1649,7 +1670,7 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 	printf("IncMoveTask Started\r\n");
 	
 	memset(&moveData, 0x00, sizeof(moveData));
-
+    
 	for(i=0; i<controller->numGroup; i++)
 	{
 		moveData.ctrl_grp |= (0x01 << i); 
@@ -1682,8 +1703,7 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 						moveData.grp_pos_info[i].pos_tag.data[4] = q->data[q->idx].user;
 						
 						memcpy(&moveData.grp_pos_info[i].pos, &q->data[q->idx].inc, sizeof(LONG) * MP_GRP_AXES_NUM);
-					
-						// increment index in the queue and decrease the count
+                        
 						q->idx = Q_OFFSET_IDX( q->idx, 1, Q_SIZE );
 						q->cnt--;
 						
@@ -1701,16 +1721,18 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 									|| (moveData.grp_pos_info[i].pos_tag.data[4] != q->data[q->idx].user) )
 								{
 									// Different format can't combine information
+                                    //printf("different format, cannot combine info\n");
 									break;
 								}
-								
-								// add next incMove to current incMove
-								for(axis=0; axis<MP_GRP_AXES_NUM; axis++)
+                                
+                        		for(axis=0; axis<MP_GRP_AXES_NUM; axis++)
 									moveData.grp_pos_info[i].pos[axis] += q->data[q->idx].inc[axis];
+
 								time = q->data[q->idx].time; 
 
 								// increment index in the queue and decrease the count
 								q->idx = Q_OFFSET_IDX( q->idx, 1, Q_SIZE );
+						
 								q->cnt--;	
 							}
 							else

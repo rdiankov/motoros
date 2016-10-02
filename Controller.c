@@ -155,7 +155,7 @@ BOOL Ros_Controller_Init(Controller* controller)
 		bInitOk = FALSE;
 	
 	controller->numRobot = 0;
-	
+
 	// Check for each group
 	for(grpNo=0; grpNo < MP_GRP_NUM; grpNo++)
 	{
@@ -165,14 +165,17 @@ BOOL Ros_Controller_Init(Controller* controller)
 			controller->ctrlGroups[grpNo] = Ros_CtrlGroup_Create(grpNo, controller->interpolPeriod);
 			if(controller->ctrlGroups[grpNo] != NULL)
 			{
-				if(Ros_CtrlGroup_IsRobot(controller->ctrlGroups[grpNo]))
+				if(Ros_CtrlGroup_IsRobot(controller->ctrlGroups[grpNo])) {
+                    Ros_CtrlGroup_GetPulsePosCmd(controller->ctrlGroups[grpNo], controller->ctrlGroups[grpNo]->prevPulsePos); // set the current commanded pulse
 					controller->numRobot++;
+                }
 			}
 			else
 				bInitOk = FALSE;
 		}
 		else
 			controller->ctrlGroups[grpNo] = NULL;
+
 	}
 
 #ifdef DEBUG

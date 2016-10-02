@@ -107,7 +107,7 @@ void Ros_StateServer_SendState(Controller* controller)
 	BOOL bSuccesfulSend;
 
 	printf("Starting State Server Send State task\r\n");
-	printf("Controller number of group = %d, interp period=%d\r\n", controller->numGroup);
+	printf("Controller number of group = %d\r\n", controller->numGroup);
 	
 	bHasConnections = FALSE;
 

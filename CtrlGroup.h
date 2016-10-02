@@ -89,6 +89,8 @@ typedef struct
 	BOOL hasDataToProcess;						// indicates that there is data to process
 	int tidAddToIncQueue;						// ThreadId to add incremental values to the queue
 	int timeLeftover_ms;						// Time left over after reaching the end of a trajectory to complet the interpolation period
+    long prevPulsePos[MAX_PULSE_AXES]; // the commanded pulse position that the trajectory starts at (Ros_MotionServer_StartTrajMode)
+
 } CtrlGroup;
 
 
