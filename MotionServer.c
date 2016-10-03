@@ -239,6 +239,7 @@ void Ros_MotionServer_WaitForSimpleMsg(Controller* controller, int connectionInd
 	int ret = 0;
 	BOOL bDisconnect = FALSE;
 	BOOL bHasPreviousData = FALSE; // if true, then receiveMsg is already filled with valid data
+	BOOL bInvalidMsgType = FALSE;
     
 	while(!bDisconnect) //keep accepting messages until connection closes
 	{
@@ -251,6 +252,7 @@ void Ros_MotionServer_WaitForSimpleMsg(Controller* controller, int connectionInd
             if (byteSize <= 0)
                 break; //end connection
         }
+		bInvalidMsgType = FALSE;
         
         // Determine the expected size of the message
        	expectedSize = -1;
@@ -274,7 +276,14 @@ void Ros_MotionServer_WaitForSimpleMsg(Controller* controller, int connectionInd
         			expectedSize = minSize + sizeof(SmBodyMotoMotionReply);
 	    			break;
 				case ROS_MSG_MOTO_JOINT_TRAJ_PT_FULL_EX:
-					expectedSize = minSize + sizeof(SmBodyJointTrajPtFullEx);
+					//Don't require the user to send data for non-existant control groups
+					if (byteSize >= (minSize + sizeof(int))) //make sure I can at least get to [numberOfGroups] field
+					{
+						expectedSize = minSize + (sizeof(int) * 2);
+						expectedSize += (sizeof(SmBodyJointTrajPtExData) * receiveMsg.body.jointTrajDataEx.numberOfValidGroups); //check the number of groups to determine size of data
+					}
+					else
+						expectedSize = minSize + sizeof(SmBodyJointTrajPtFullEx);
 					break;
 				case ROS_MSG_MOTO_JOINT_FEEDBACK_EX:
 					expectedSize = minSize + sizeof(SmBodyJointFeedbackEx);
@@ -291,6 +300,9 @@ void Ros_MotionServer_WaitForSimpleMsg(Controller* controller, int connectionInd
 					break;
 				case ROS_MSG_MOTO_WRITE_SINGLE_IO_REPLY:
 					expectedSize = minSize + sizeof(SmBodyMotoWriteSingleIOReply);
+					break;
+				default:
+					bInvalidMsgType = TRUE;
 					break;
         	}
         }
@@ -311,6 +323,11 @@ void Ros_MotionServer_WaitForSimpleMsg(Controller* controller, int connectionInd
                 bHasPreviousData = TRUE;
             }
        	}
+		else if (bInvalidMsgType)
+		{
+			printf("Unknown Message Received(%d)\r\n", receiveMsg.header.msgType);
+			Ros_SimpleMsg_MotionReply(&receiveMsg, ROS_RESULT_INVALID, ROS_RESULT_INVALID_MSGTYPE, &replyMsg, 0);			
+		}
        	else
        	{
        		printf("MessageReceived(%d bytes): expectedSize=%d, sizeof(receiveMsg)=%d\r\n", byteSize,  expectedSize, sizeof(receiveMsg));
@@ -365,8 +382,15 @@ int Ros_MotionServer_SimpleMsgProcess(Controller* controller, SimpleMsg* receive
 		break;
 	case ROS_MSG_MOTO_JOINT_TRAJ_PT_FULL_EX:
 		// Check that the appropriate message size was received
-		expectedBytes += sizeof(SmBodyJointTrajPtFullEx);
-		if(expectedBytes == byteSize)
+		if (byteSize >= (expectedBytes + sizeof(int))) //make sure I can at least get to [numberOfGroups] field
+		{
+			expectedBytes += (sizeof(int) * 2);
+			expectedBytes += (sizeof(SmBodyJointTrajPtExData) * receiveMsg->body.jointTrajDataEx.numberOfValidGroups); //check the number of groups to determine size of data
+		}
+		else
+			expectedBytes += sizeof(SmBodyJointTrajPtFullEx);
+
+		if(expectedBytes <= byteSize)
 			ret = Ros_MotionServer_JointTrajPtFullExProcess(controller, receiveMsg, replyMsg);
 		else
 			invalidSubcode = ROS_RESULT_INVALID_MSGSIZE;
@@ -493,12 +517,17 @@ int Ros_MotionServer_JointTrajPtFullExProcess(Controller* controller, SimpleMsg*
 		return 0;
 	}
 
+	// Pre-check to ensure no groups are busy
 	for (i = 0; i < msgBody->numberOfValidGroups; i += 1)
-	{		
-		// Check group number valid
-		if(Ros_Controller_IsValidGroupNo(controller, msgBody->jointTrajPtData[i].groupNo))
+	{
+		if (Ros_Controller_IsValidGroupNo(controller, msgBody->jointTrajPtData[i].groupNo))
 		{
 			ctrlGroup = controller->ctrlGroups[msgBody->jointTrajPtData[i].groupNo];
+			if (ctrlGroup->hasDataToProcess)
+			{
+				Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_BUSY, 0, replyMsg, msgBody->jointTrajPtData[i].groupNo);
+				return 0;
+			}
 		}
 		else
 		{
@@ -506,7 +535,7 @@ int Ros_MotionServer_JointTrajPtFullExProcess(Controller* controller, SimpleMsg*
 			Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_INVALID, ROS_RESULT_INVALID_GROUPNO, replyMsg, msgBody->jointTrajPtData[i].groupNo);
 			return 0;
 		}
-	
+			
 		// Check that minimum information (time, position, velocity) is valid
 		if( (msgBody->jointTrajPtData[i].validFields & 0x07) != 0x07 )
 		{
@@ -514,6 +543,11 @@ int Ros_MotionServer_JointTrajPtFullExProcess(Controller* controller, SimpleMsg*
 			Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_INVALID, ROS_RESULT_INVALID_DATA_INSUFFICIENT, replyMsg, msgBody->jointTrajPtData[i].groupNo);
 			return 0;
 		}
+	}
+
+	for (i = 0; i < msgBody->numberOfValidGroups; i += 1)
+	{
+		ctrlGroup = controller->ctrlGroups[msgBody->jointTrajPtData[i].groupNo];
 		
 		// Check the trajectory sequence code
 		if(msgBody->sequence == 0) // First trajectory point
@@ -528,6 +562,7 @@ int Ros_MotionServer_JointTrajPtFullExProcess(Controller* controller, SimpleMsg*
 			{
 				printf("ERROR: Ros_MotionServer_InitTrajPointFullEx returned %d\n", ret);
 				Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_INVALID, ret, replyMsg, msgBody->jointTrajPtData[i].groupNo);
+				return 0; //stop processing other groups in this loop
 			}
 		}
 		else if(msgBody->sequence > 0)// Subsequent trajectory points
@@ -542,16 +577,19 @@ int Ros_MotionServer_JointTrajPtFullExProcess(Controller* controller, SimpleMsg*
 			{
 				printf("ERROR: Ros_MotionServer_AddTrajPointFullEx returned %d\n", ret);
 				Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_BUSY, 0, replyMsg, msgBody->jointTrajPtData[i].groupNo);
+				return 0; //stop processing other groups in this loop
 			}
 			else
 			{
 				printf("ERROR: Ros_MotionServer_AddTrajPointFullEx returned %d\n", ret);
 				Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_INVALID, ret, replyMsg, msgBody->jointTrajPtData[i].groupNo);
+				return 0; //stop processing other groups in this loop
 			}
 		}
 		else
 		{
 			Ros_SimpleMsg_MotionReply(receiveMsg, ROS_RESULT_INVALID, ROS_RESULT_INVALID_SEQUENCE, replyMsg, msgBody->jointTrajPtData[i].groupNo);
+			return 0; //stop processing other groups in this loop
 		}
 	}
 
@@ -1221,7 +1259,7 @@ int Ros_MotionServer_InitTrajPointFull(CtrlGroup* ctrlGroup, SmBodyJointTrajPtFu
 		for(i=0; i<MAX_PULSE_AXES; i++)
 		{
 			// Check if position matches current command position based on the maxIncrement between cycles
-			if(abs(trajPulsePos[i] - curCommandedPos[i]) > ctrlGroup->maxInc.maxIncrement[i] )
+			if(abs(trajPulsePos[i] - curCommandedPos[i]) > ctrlGroup->maxInc.maxIncrement[i] ) // used to be START_MAX_PULSE_DEVIATION)
 			{
 				printf("ERROR: Trajectory start position doesn't match current position[%d] (thresh is %d).\r\n", i, ctrlGroup->maxInc.maxIncrement[i]);
 				printf("    traj=%d, %d, %d, %d, %d, %d, %d, %d\r\n",
@@ -1236,7 +1274,7 @@ int Ros_MotionServer_InitTrajPointFull(CtrlGroup* ctrlGroup, SmBodyJointTrajPtFu
 			}
 			
 			// Check maximum velocity limit
-			if(abs(ctrlGroup->jointMotionData.vel[i]) > ctrlGroup->maxSpeedRad[i])
+			if(abs(ctrlGroup->jointMotionData.vel[i]) > ctrlGroup->maxSpeed[i])
 			{
 				// excessive speed
 				return ROS_RESULT_INVALID_DATA_SPEED;
@@ -1296,11 +1334,11 @@ int Ros_MotionServer_AddTrajPointFull(CtrlGroup* ctrlGroup, SmBodyJointTrajPtFul
 		// TODO? Note need to add function to Parameter Extraction Library
 		
 		// Velocity check
-		if(abs(jointData.vel[i]) > ctrlGroup->maxSpeedRad[i])
+		if(abs(jointData.vel[i]) > ctrlGroup->maxSpeed[i])
 		{
 			// excessive speed
 			printf("ERROR: Invalid speed in message TrajPointFull data: \r\n  axis: %d, speed: %f, limit: %f\r\n", 
-				i, jointData.vel[i], ctrlGroup->maxSpeedRad[i]);
+				i, jointData.vel[i], ctrlGroup->maxSpeed[i]);
 				
 			#ifdef DEBUG
 				Ros_SimpleMsg_DumpTrajPtFull(jointTrajData);
@@ -1664,13 +1702,12 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 	int ret;
 	LONG time;
 	LONG q_time;
-	int axis;
 	//BOOL bNoData = TRUE;  // for testing
 	
 	printf("IncMoveTask Started\r\n");
 	
 	memset(&moveData, 0x00, sizeof(moveData));
-    
+
 	for(i=0; i<controller->numGroup; i++)
 	{
 		moveData.ctrl_grp |= (0x01 << i); 
@@ -1703,7 +1740,8 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 						moveData.grp_pos_info[i].pos_tag.data[4] = q->data[q->idx].user;
 						
 						memcpy(&moveData.grp_pos_info[i].pos, &q->data[q->idx].inc, sizeof(LONG) * MP_GRP_AXES_NUM);
-                        
+					
+						// increment index in the queue and decrease the count
 						q->idx = Q_OFFSET_IDX( q->idx, 1, Q_SIZE );
 						q->cnt--;
 						
@@ -1714,6 +1752,7 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
 							&&  (q->data[q->idx].time - q_time <= controller->interpolPeriod) )
 							{ 
 								// next incMove is part of same interpolation period
+								int axis;
 								
 								// check that information is in the same format
 								if( (moveData.grp_pos_info[i].pos_tag.data[2] != q->data[q->idx].tool)
@@ -1724,8 +1763,9 @@ void Ros_MotionServer_IncMoveLoopStart(Controller* controller) //<-- IP_CLK prio
                                     //printf("different format, cannot combine info\n");
 									break;
 								}
-                                
-                        		for(axis=0; axis<MP_GRP_AXES_NUM; axis++)
+								
+								// add next incMove to current incMove
+								for(axis=0; axis<MP_GRP_AXES_NUM; axis++)
 									moveData.grp_pos_info[i].pos[axis] += q->data[q->idx].inc[axis];
 
 								time = q->data[q->idx].time; 

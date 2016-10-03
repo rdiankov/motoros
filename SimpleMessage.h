@@ -102,7 +102,7 @@ struct _SmBodyRobotStatus		// ROS_MSG_ROBOT_STATUS = 13
 	int in_error;				// Is there an alarm:   -1=Unknown, 1=True, 0=False 
 	int in_motion;				// Is currently executing a motion command:  -1=Unknown, 1=True, 0=False 
 	int mode;  					// Controller/Pendant mode: -1=Unknown, 1=Manual(TEACH), 2=Auto(PLAY)
-	int motion_possible;		// Is the controller ready to receive motion: -1=Unknown, 1=ENABLED, 0=DISABLED
+	int motion_possible;		// Is the controller ready to receive motion: -1=Unknown, 1=ENABLED, 0=DISABLED 
 }  __attribute__((__packed__));  	
 typedef struct _SmBodyRobotStatus	SmBodyRobotStatus;
 

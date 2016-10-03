@@ -101,11 +101,11 @@ void Ros_StateServer_SendState(Controller* controller)
 	int groupNo;
 	SimpleMsg sendMsg;
 	SimpleMsg sendMsgFEx;
-	int msgSize, fexMsgSize;
+	int msgSize, fexMsgSize = 0;
 	BOOL bOkToSendExFeedback;
 	BOOL bHasConnections;
 	BOOL bSuccesfulSend;
-
+	
 	printf("Starting State Server Send State task\r\n");
 	printf("Controller number of group = %d\r\n", controller->numGroup);
 	
