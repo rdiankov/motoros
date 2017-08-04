@@ -1,4 +1,4 @@
-﻿// MotionServer.h
+// MotionServer.h
 //
 /*
 * Software License Agreement (BSD License) 
@@ -31,6 +31,9 @@
 
 #ifndef MOTIONSERVER_H
 #define MOTIONSERVER_H
+
+//#include "motoPlus.h"
+#include "Controller.h"
 
 #define MOTION_STOP_TIMEOUT 20
 #define MOTION_START_TIMEOUT 5000  // in milliseconds

@@ -1,4 +1,4 @@
-﻿/* ParameterExtraction.h - Parameter Extraction definitions header file */
+/* ParameterExtraction.h - Parameter Extraction definitions header file */
 
 /*
 * Software License Agreement (BSD License) 
@@ -32,79 +32,12 @@
 #ifndef _INC_GETMOTOMANPARAMETERS_H
 #define _INC_GETMOTOMANPARAMETERS_H
 
+#include "ParameterTypes.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-	
-typedef struct
-{
-	float PtoR[MAX_PULSE_AXES]; //Array to store PULSE TO RADIAN conversion factors for each axes
-} PULSE_TO_RAD;
 
-typedef struct
-{
-	float PtoM[MAX_PULSE_AXES]; //Array to store PULSE TO METER conversion factors for each axes
-} PULSE_TO_METER;
-
-typedef enum
-{
-	ROTATATION_AXIS,
-	LINEAR_AXIS
-} AXIS_TYPE;
-
-typedef struct
-{
-	AXIS_TYPE	type[MAX_PULSE_AXES];	//Array to store whether axis is rotational or linear
-} AXIS_MOTION_TYPE;
-
-typedef struct
-{
-	BOOL  bValid;			//TRUE if ulSourceAxis != 0
-	INT32 ulSourceAxis;		
-	INT32 ulCorrectionAxis;	 
-	float fCorrectionRatio;	
-} FB_AXIS_CORRECTION;
-
-typedef struct
-{
-	FB_AXIS_CORRECTION  correction[MAX_PULSE_AXES];
-} FB_PULSE_CORRECTION_DATA;
-
-typedef struct
-{
-	UINT32	qtyOfOutFiles;				
-	UINT32	qtyOfHighPriorityTasks;		
-	UINT32	qtyOfNormalPriorityTasks;	
-} TASK_QTY_INFO;
-	
-typedef struct
-{
-	UINT16 periodInMilliseconds;
-} GP_INTERPOLATION_PERIOD;
-
-typedef struct
-{
-	UINT32	maxIncrement[MAX_PULSE_AXES];
-} MAX_INCREMENT_INFO;
-
-typedef struct
-{
-	int ctrlGrp;				//Robot control group
-	int IpCycleInMilliseconds;	//Interpolation Cycle in milliseconds
-	MAX_INCREMENT_INFO info;	//Maximum increment per interpolation cycle
-} MAX_INC_PIPC;
-
-typedef struct
-{
-	INT32 maxLimit[MAX_PULSE_AXES];
-	INT32 minLimit[MAX_PULSE_AXES];
-} JOINT_PULSE_LIMITS;
-
-typedef struct
-{
-	INT32 maxLimit[MAX_PULSE_AXES];
-} JOINT_ANGULAR_VELOCITY_LIMITS;
-	
 /******************************************************************************/
 /* << 2 >>                                                              	  */
 /* Function name : int  GP_getNumberOfGroups()								  */
@@ -232,6 +165,18 @@ extern STATUS 	GP_getAxisMotionType(int ctrlGrp, AXIS_MOTION_TYPE* axisType);
 /*				 : Failure = NG												  */
 /******************************************************************************/
 extern STATUS 	GP_getPulseToMeter(int ctrlGrp, PULSE_TO_METER* PulseToMeter);
+
+/******************************************************************************/
+/* << 20 >>                                                              	  */
+/* Function name : STATUS GP_isBaxisSlave()									  */
+/* Functionality : Determines if B axis is automatically moved relative to	  */
+/*				   other axes.												  */
+/* Parameter	 : int ctrlGrp - Robot control to fetch data	[IN]		  */
+/*				   BOOL* bBaxisIsSlave - TRUE if b axis is slave [OUT]		  */
+/* Return value	 : Success = OK 											  */
+/*				 : Failure = NG												  */
+/******************************************************************************/
+extern STATUS 	GP_isBaxisSlave(int ctrlGrp, BOOL* bBaxisIsSlave);
 
 #ifdef __cplusplus
 }

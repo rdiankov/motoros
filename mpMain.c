@@ -1,4 +1,4 @@
-﻿/* mp_main.c - MotoPlus Test Application for Real Time Process */
+/* mp_main.c - MotoPlus Test Application for Real Time Process */
 // History:
 // 06/12/2013: Fix reply to ROS_MSG_JOINT_TRAJ_PT_FULL message
 // 06/12/2013: Release v.1.0.1
@@ -49,7 +49,7 @@
 
 
 #ifdef DEBUG
-	#warning Debug messages in MotoPlus *will* affect application performance (disable this in SimpleMessage.h
+	#warning Debug messages in MotoPlus *will* affect application performance (disable this in SimpleMessage.h)
 #endif
 
 //GLOBAL DATA DEFINITIONS
@@ -61,7 +61,7 @@ void mpUsrRoot(int arg1, int arg2, int arg3, int arg4, int arg5, int arg6, int a
 {
 
 //#ifdef DX100
-	mpTaskDelay(10000);  // 10 sec. delay to enable DX100 system to complete initialization
+	mpTaskDelay(10000 / mpGetRtc());  // 10 sec. delay to enable DX100 system to complete initialization
 //#endif
 	
 	//Creates and starts a new task in a seperate thread of execution.
@@ -120,9 +120,8 @@ void RosInitTask()
 		if (!Ros_Controller_StatusUpdate(&ros_controller))
 			puts("Failed to update controller status.  Check robot parameters.");
 	
-		mpTaskDelay(CONTROLLER_STATUS_UPDATE_PERIOD);
+		mpTaskDelay(CONTROLLER_STATUS_UPDATE_PERIOD / mpGetRtc());
 	}
 }
-
 
 
